@@ -135,6 +135,10 @@ mc ls --json
 
 给 Agent 的精简开关机流程见 [SKILL.md](SKILL.md)。
 
+## 许可证
+
+本项目采用 [Apache License 2.0](LICENSE) 许可，版权归 AkkoYK 所有，详见 [NOTICE](NOTICE)。
+
 ## 开发
 
 ```bash
