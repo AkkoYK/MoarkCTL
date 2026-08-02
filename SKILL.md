@@ -1,44 +1,37 @@
 ---
 name: moarkctl
-description: Manage all Moark compute containers owned by one access token, including safe target selection, start, shutdown, reboot, and multi-instance status waits.
+description: Manage every Moark compute container owned by one access token using explicit target discovery, safe multi-instance selection, lifecycle commands, and all-target status waits.
 ---
 
 # MoarkCTL
 
-Use this skill when an Agent must control the lifecycle of compute containers on Moark. Use `mc`; it is the short alias for `moarkctl`.
+Use `mc`, the short alias for `moarkctl`. Limit this skill to Moark compute-container discovery, start, shutdown, reboot, and status waits. Use [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) for commands, terminals, and files inside a running machine.
 
-MoarkCTL does not provide SSH, remote Shell execution, file synchronization, uploads, downloads, instance creation, or instance deletion. Use [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) for work inside a running container.
+## Configure safely
 
-## Configure when setup is missing
+Do not read, print, or request the token in chat. If setup is missing:
 
-Ask the operator to create and fill the private configuration locally. Never ask them to paste the access token into chat.
+1. Run `mc init` to create `~/.config/moarkctl/config.env` with private permissions.
+2. Ask the operator to open [Moark Settings → Access Tokens](https://moark.com/kdakztwn/dashboard/settings/tokens), create an appropriately scoped token, and edit the config locally.
+3. Ask them to place the raw value in `MOARK_TOKEN` without `Bearer`.
+4. Leave `MOARK_DEFAULT_INSTANCE` empty until discovery. No instance ID is required in configuration.
 
-1. Ask the operator to sign in to [Moark](https://moark.com) and switch to the workspace that owns the intended compute containers.
-2. Open **Settings → Access Tokens**. The URL has the form `https://moark.com/<workspace>/dashboard/settings/tokens`; the workspace segment is account-specific.
-3. Create a token. If the page exposes permission scopes, require compute-container read plus start, stop, and reboot permissions, and no broader permission than the task needs.
-4. Copy the template, restrict it, and place the raw token in `MOARK_TOKEN` without a `Bearer` prefix:
+Use `--env-file PATH` or `MOARKCTL_CONFIG=PATH` only when the user-level path is unsuitable. Never rely on the current working directory for configuration. Every non-init command reports its config path on stderr.
 
-   ```bash
-   cp moarkctl.env.example .moarkctl.env
-   chmod 600 .moarkctl.env
-   # .moarkctl.env: MOARK_TOKEN=replace-me
-   ```
-
-An instance ID is not a required environment variable. Run `mc ls` after configuration; the token discovers every manageable container in its workspace. Set `MOARK_DEFAULT_INSTANCE` only after listing the containers, using an exact name, full ID, or unique ID prefix. Keep `MOARK_BASE_URL=https://api.moark.com/v1` unless the platform explicitly supplies another endpoint.
-
-Treat `mc ls` as the non-mutating configuration check. On HTTP 401 or 403, ask the operator to verify the workspace, token validity, and compute-container permissions without revealing the token.
+Reject placeholder tokens such as `replace-me` or `your-token`. On HTTP 401 or 403, ask the operator to verify token validity, workspace, and compute-container permissions without revealing the token.
 
 ## Discover before acting
 
-Run:
+Run the non-mutating checks:
 
 ```bash
+mc self-test
 mc ls
 ```
 
-The access token discovers every manageable container, so an instance ID is not required in configuration. Select a target by exact platform name, full ID, or unique ID prefix. When several instances exist, never assume that the first list item is the intended target.
+`self-test` performs API discovery only. It must not start, stop, or reboot a container. Select targets by exact name, full ID, or unique ID prefix. With several containers, never assume the first list item is intended.
 
-## Lifecycle commands
+## Change lifecycle with explicit scope
 
 ```bash
 mc on TARGET -w
@@ -46,31 +39,16 @@ mc off TARGET -w
 mc re TARGET -w
 ```
 
-Use several selectors to manage a bounded set:
+Pass several selectors for a bounded set. Use `--all` only when the user explicitly intends every token-owned container. Use `-w` so every selected target reaches the requested state; use `-t SECONDS` when provisioning needs a longer wait.
 
-```bash
-mc on TARGET_A TARGET_B -w
-mc off TARGET_A TARGET_B -w
-```
+Set `MOARK_DEFAULT_INSTANCE` only after discovery, and only when an exact name, full ID, or unique ID prefix is stable enough to omit the selector safely.
 
-Use `--all` only when the task explicitly covers every token-owned container:
+## Follow the research-compute boundary
 
-```bash
-mc off --all -w
-```
-
-`on` means start with the accelerator attached. `-w` waits for all selected instances, not just the first. Use `-t SECONDS` when provisioning is expected to exceed the configured timeout.
-
-## Safe research workflow
-
-1. Run `mc ls` and record the intended target IDs and current states without exposing the token.
+1. Run `mc ls` and record the intended IDs and current states without exposing credentials.
 2. Run `mc on TARGET -w` only when remote compute is needed.
-3. Use JupyterCTL to recheck accelerator type and health, disk, caches, artifacts, and active processes. A `running` platform state is not a readiness result.
-4. Run the bounded remote task. Keep process health, persisted artifacts, evaluation, and target-device evidence separate.
-5. Confirm results and logs are persisted. Then run `mc off TARGET -w` and verify `stopped`.
+3. Use JupyterCTL to check accelerator health, disk, caches, artifacts, and active processes. Treat `running` as a platform state, not machine readiness.
+4. Run the bounded remote task and verify persisted outputs and acceptance evidence.
+5. Check that background work has ended. Then run `mc off TARGET -w` and verify `stopped`.
 
-Do not stop an instance merely because an interactive terminal disappeared. Check the remote process and persisted outputs first. Do not treat a successful shutdown as evidence that the experiment completed or passed.
-
-## Credentials and errors
-
-Never read or print `.moarkctl.env`. Do not paste `MOARK_TOKEN` into commands, logs, or chat. If an API call fails, report the HTTP status and redacted detail. Re-run `mc ls` before retrying a lifecycle change so that stale IDs or names are not reused blindly.
+Do not stop a container because an interactive terminal disappeared. Do not treat a successful shutdown as evidence that an experiment completed or passed. MoarkCTL has no SSH, remote execution, file transfer, instance creation, instance deletion, or volume deletion commands.

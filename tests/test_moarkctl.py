@@ -1,10 +1,12 @@
 from pathlib import Path
 import contextlib
 import io
+import json
 import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +20,8 @@ from moarkctl.cli import (  # noqa: E402
     build_parser,
     command_lifecycle,
     config_from_env,
+    initialize_config,
+    main,
     resolve_instances,
     scrub_secrets,
     wait_for_status,
@@ -62,6 +66,19 @@ class FakeLifecycleClient:
 
 
 class MoarkConfigTests(unittest.TestCase):
+    def test_init_creates_fixed_private_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / ".config" / "moarkctl" / "config.env"
+
+            created = initialize_config(config_path, force=False)
+
+            self.assertEqual(created, config_path)
+            self.assertIn("MOARK_TOKEN=", created.read_text(encoding="utf-8"))
+            if os.name == "posix":
+                self.assertEqual(created.stat().st_mode & 0o777, 0o600)
+            with self.assertRaisesRegex(MoarkCtlError, "already exists"):
+                initialize_config(config_path, force=False)
+
     def test_config_repr_hides_token(self):
         config = MoarkConfig(token="top-secret")
 
@@ -97,6 +114,20 @@ class MoarkConfigTests(unittest.TestCase):
 
             with self.assertRaisesRegex(MoarkCtlError, "chmod 600"):
                 config_from_env(str(env_file))
+
+    def test_placeholder_token_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / "config.env"
+            env_file.write_text("MOARK_TOKEN=replace-me\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            previous = os.environ.pop("MOARK_TOKEN", None)
+            try:
+                with self.assertRaisesRegex(MoarkCtlError, "placeholder"):
+                    config_from_env(env_file)
+            finally:
+                os.environ.pop("MOARK_TOKEN", None)
+                if previous is not None:
+                    os.environ["MOARK_TOKEN"] = previous
 
 
 class MoarkSelectionTests(unittest.TestCase):
@@ -139,6 +170,30 @@ class MoarkSelectionTests(unittest.TestCase):
 
 
 class MoarkCliTests(unittest.TestCase):
+    @mock.patch("moarkctl.cli.MoarkClient.instances", return_value=INSTANCES)
+    def test_self_test_discovers_without_lifecycle_mutation(self, instances):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / "config.env"
+            env_file.write_text("MOARK_TOKEN=secret\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            previous = os.environ.pop("MOARK_TOKEN", None)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    exit_code = main(["--env-file", str(env_file), "self-test"])
+            finally:
+                os.environ.pop("MOARK_TOKEN", None)
+                if previous is not None:
+                    os.environ["MOARK_TOKEN"] = previous
+
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["instance_count"], 2)
+        self.assertIn(str(env_file.resolve()), stderr.getvalue())
+        instances.assert_called_once_with()
+
     def test_short_lifecycle_aliases(self):
         start = build_parser().parse_args(["on", "ascend-lab", "-w"])
         stop = build_parser().parse_args(["off", "--all", "-w"])

@@ -18,10 +18,33 @@ import urllib.request
 
 
 DEFAULT_BASE_URL = "https://api.moark.com/v1"
-DEFAULT_ENV_FILE = ".moarkctl.env"
+VERSION = "0.3.0"
+CONFIG_ENV_VAR = "MOARKCTL_CONFIG"
 DEFAULT_HTTP_TIMEOUT = 60.0
 DEFAULT_POLL_INTERVAL = 8.0
 DEFAULT_POLL_TIMEOUT = 600.0
+PLACEHOLDER_VALUES = {
+    "change-me",
+    "changeme",
+    "replace-me",
+    "token-here",
+    "your-token",
+    "your_token",
+}
+INITIAL_CONFIG = """# MoarkCTL user configuration
+# Create an access token under Moark workspace Settings -> Access Tokens.
+# Paste only the raw token value. Do not add a Bearer prefix.
+MOARK_TOKEN=
+
+# Optional. Run `mc ls` first, then use an exact name, full ID, or unique ID
+# prefix when one container should be the default lifecycle target.
+MOARK_DEFAULT_INSTANCE=
+
+MOARK_BASE_URL=https://api.moark.com/v1
+MOARK_HTTP_TIMEOUT=60
+MOARK_POLL_INTERVAL=8
+MOARK_POLL_TIMEOUT=600
+"""
 SECRET_KEYS = {
     "authorization",
     "cookie",
@@ -46,6 +69,56 @@ class MoarkConfig:
     poll_interval: float = DEFAULT_POLL_INTERVAL
     poll_timeout: float = DEFAULT_POLL_TIMEOUT
     default_instance: str = ""
+    config_file: str = ""
+
+
+def default_config_path() -> Path:
+    override = os.environ.get(CONFIG_ENV_VAR, "").strip()
+    if override:
+        return Path(override).expanduser()
+    xdg_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    base = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
+    return base / "moarkctl" / "config.env"
+
+
+def resolve_config_path(path: str | os.PathLike[str] | None) -> Path:
+    return Path(path).expanduser() if path else default_config_path()
+
+
+def initialize_config(
+    path: str | os.PathLike[str] | None,
+    *,
+    force: bool,
+) -> Path:
+    config_path = resolve_config_path(path)
+    config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT
+    flags |= os.O_TRUNC if force else os.O_EXCL
+    try:
+        descriptor = os.open(config_path, flags, 0o600)
+    except FileExistsError as exc:
+        raise MoarkCtlError(
+            f"config already exists: {config_path}; edit it or pass --force"
+        ) from exc
+    try:
+        if os.name == "posix":
+            os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = -1
+            handle.write(INITIAL_CONFIG)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    return config_path
+
+
+def is_placeholder(value: str) -> bool:
+    normalized = value.strip().strip("'\"").casefold()
+    return (
+        normalized in PLACEHOLDER_VALUES
+        or (normalized.startswith("<") and normalized.endswith(">"))
+        or normalized.startswith("your-")
+    )
 
 
 def load_env_file(path: str | os.PathLike[str]) -> None:
@@ -80,15 +153,26 @@ def _positive_float(name: str, default: float) -> float:
     return value
 
 
-def config_from_env(env_file: str = DEFAULT_ENV_FILE) -> MoarkConfig:
-    load_env_file(env_file)
+def config_from_env(
+    env_file: str | os.PathLike[str] | None = None,
+) -> MoarkConfig:
+    config_path = resolve_config_path(env_file)
+    load_env_file(config_path)
     token = os.environ.get("MOARK_TOKEN", "")
     if not token:
-        raise MoarkCtlError("MOARK_TOKEN is required")
+        raise MoarkCtlError(
+            f"MOARK_TOKEN is required; run 'mc init' and edit {config_path}"
+        )
+    if is_placeholder(token):
+        raise MoarkCtlError(
+            f"MOARK_TOKEN is still a placeholder in {config_path}"
+        )
     base_url = os.environ.get("MOARK_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
     parsed = urllib.parse.urlsplit(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise MoarkCtlError("MOARK_BASE_URL must be an absolute http(s) URL")
+    if parsed.hostname and parsed.hostname.casefold().endswith(".invalid"):
+        raise MoarkCtlError("MOARK_BASE_URL uses the reserved .invalid domain")
     return MoarkConfig(
         token=token,
         base_url=base_url,
@@ -98,6 +182,7 @@ def config_from_env(env_file: str = DEFAULT_ENV_FILE) -> MoarkConfig:
         ),
         poll_timeout=_positive_float("MOARK_POLL_TIMEOUT", DEFAULT_POLL_TIMEOUT),
         default_instance=os.environ.get("MOARK_DEFAULT_INSTANCE", ""),
+        config_file=str(config_path.resolve()),
     )
 
 
@@ -149,7 +234,7 @@ class MoarkClient:
         headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {self.config.token}",
-            "User-Agent": "MoarkCTL/0.2",
+            "User-Agent": f"MoarkCTL/{VERSION}",
         }
         if body is not None:
             payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -443,11 +528,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-e",
         "--env-file",
-        default=DEFAULT_ENV_FILE,
-        help=f"credential env file (default: {DEFAULT_ENV_FILE})",
+        default=None,
+        help=(
+            "credential env file (default: $MOARKCTL_CONFIG or "
+            "~/.config/moarkctl/config.env)"
+        ),
     )
-    parser.add_argument("--version", action="version", version="MoarkCTL 0.2.0")
+    parser.add_argument("--version", action="version", version=f"MoarkCTL {VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = sub.add_parser(
+        "init", help="create the private user configuration"
+    )
+    init_parser.add_argument(
+        "--force", action="store_true", help="replace an existing config file"
+    )
+    init_parser.set_defaults(action="init")
+
+    self_test = sub.add_parser(
+        "self-test", aliases=["check"], help="verify token and API discovery"
+    )
+    self_test.set_defaults(action="self-test")
 
     listing = sub.add_parser(
         "list", aliases=["ls", "status", "st"], help="list token-owned instances"
@@ -467,8 +568,46 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        config = config_from_env(args.env_file)
+        config_path = resolve_config_path(args.env_file)
+        if args.action == "init":
+            created = initialize_config(config_path, force=args.force)
+            print(
+                json.dumps(
+                    {
+                        "config_file": str(created.resolve()),
+                        "created": True,
+                        "mode": "0600" if os.name == "posix" else "private",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+
+        print(f"mc: config={config_path.resolve()}", file=sys.stderr)
+        config = config_from_env(config_path)
         client = MoarkClient(config)
+        if args.action == "self-test":
+            instances = client.instances()
+            print(
+                json.dumps(
+                    {
+                        "checks": {
+                            "api_discovery": "ok",
+                            "config": "ok",
+                        },
+                        "config_file": config.config_file,
+                        "instance_count": len(instances),
+                        "instances": [instance_summary(item) for item in instances],
+                        "ok": True,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         if args.action == "list":
             command_list(client, args)
             return 0
