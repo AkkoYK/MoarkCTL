@@ -3,7 +3,7 @@
 <p align="right"><strong>English</strong> | <a href="./README.md">简体中文</a></p>
 
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="MoarkCTL discovers every token-owned Moark compute container and manages lifecycle through explicit targets">
+  <img src="./assets/readme/hero-en.svg" width="100%" alt="MoarkCTL discovers every token-owned Moark compute container and manages lifecycle through explicit targets">
 </p>
 
 <p align="center">
