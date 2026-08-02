@@ -32,7 +32,12 @@ pipx install .
 python -m pip install .
 ```
 
-### 2. 只配置访问令牌
+### 2. 获取并填写访问令牌
+
+1. 登录 [模力方舟](https://moark.com)，切换到持有目标算力容器的工作空间。
+2. 进入“设置 → 访问令牌”。页面地址形如 `https://moark.com/<工作空间>/dashboard/settings/tokens`；其中 `<工作空间>` 会随账户或组织变化，不要照抄别人的地址。
+3. 创建一个新的访问令牌并立即复制。如果页面提供权限范围，令牌至少需要读取算力容器，以及启动、停止和重启容器的权限；不要额外开放 MoarkCTL 用不到的权限。
+4. 把令牌原文填入 `MOARK_TOKEN`。不要添加 `Bearer` 前缀，也不要把令牌放进命令行、README 或聊天记录。
 
 ```bash
 cp moarkctl.env.example .moarkctl.env
@@ -46,6 +51,17 @@ MOARK_TOKEN=replace-me
 ```
 
 > 不需要预先填写实例 ID。`mc ls` 会查询该令牌有权管理的全部算力容器。
+
+| 环境变量 | 如何填写 | 是否必填 |
+| --- | --- | --- |
+| `MOARK_TOKEN` | 当前工作空间“设置 → 访问令牌”页面生成的原始令牌，不含 `Bearer` | 必填 |
+| `MOARK_DEFAULT_INSTANCE` | 先运行 `mc ls`，再填写常用容器的精确名称、完整 ID 或唯一 ID 前缀 | 可选 |
+| `MOARK_BASE_URL` | 保持官方默认值 `https://api.moark.com/v1` | 可选，通常不要修改 |
+| `MOARK_HTTP_TIMEOUT` | 单次 API 请求超时秒数 | 可选，默认 `60` |
+| `MOARK_POLL_INTERVAL` | `-w` 等待状态时的轮询间隔秒数 | 可选，默认 `8` |
+| `MOARK_POLL_TIMEOUT` | `-w` 等待状态的总超时秒数 | 可选，默认 `600` |
+
+填写后先运行 `mc ls` 验证。它只读取并列出容器，不会开关机；若返回 `401` 或 `403`，检查令牌是否来自正确工作空间、是否仍然有效，以及是否具备算力容器管理权限。
 
 ### 3. 查询、开机、关机
 
@@ -103,10 +119,10 @@ mc ls --json
 
 ## 和 JupyterCTL 怎么分工
 
-```text
-MoarkCTL    mc on / mc off     平台生命周期、计费边界
-JupyterCTL jc x / jc u / jc d  远端命令、终端与文件
-```
+| 工具 | 负责什么 | 常用短命令 |
+| --- | --- | --- |
+| [MoarkCTL](https://github.com/AkkoYK/MoarkCTL) | 平台生命周期与计费边界 | `mc on`、`mc off`、`mc re` |
+| [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) | 远端命令、保留终端与文件传输 | `jc x`、`jc u`、`jc d` |
 
 这个独立版本没有沿用早期原型里的 SSH、远端命令、项目同步和文件传输。职责拆开后，Moark 访问令牌只用于平台控制，远端实验操作也不依赖平台 SSH 网关。
 

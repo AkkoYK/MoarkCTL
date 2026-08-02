@@ -7,7 +7,26 @@ description: Manage all Moark compute containers owned by one access token, incl
 
 Use this skill when an Agent must control the lifecycle of compute containers on Moark. Use `mc`; it is the short alias for `moarkctl`.
 
-MoarkCTL does not provide SSH, remote Shell execution, file synchronization, uploads, downloads, instance creation, or instance deletion. Use JupyterCTL for work inside a running container.
+MoarkCTL does not provide SSH, remote Shell execution, file synchronization, uploads, downloads, instance creation, or instance deletion. Use [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) for work inside a running container.
+
+## Configure when setup is missing
+
+Ask the operator to create and fill the private configuration locally. Never ask them to paste the access token into chat.
+
+1. Ask the operator to sign in to [Moark](https://moark.com) and switch to the workspace that owns the intended compute containers.
+2. Open **Settings → Access Tokens**. The URL has the form `https://moark.com/<workspace>/dashboard/settings/tokens`; the workspace segment is account-specific.
+3. Create a token. If the page exposes permission scopes, require compute-container read plus start, stop, and reboot permissions, and no broader permission than the task needs.
+4. Copy the template, restrict it, and place the raw token in `MOARK_TOKEN` without a `Bearer` prefix:
+
+   ```bash
+   cp moarkctl.env.example .moarkctl.env
+   chmod 600 .moarkctl.env
+   # .moarkctl.env: MOARK_TOKEN=replace-me
+   ```
+
+An instance ID is not a required environment variable. Run `mc ls` after configuration; the token discovers every manageable container in its workspace. Set `MOARK_DEFAULT_INSTANCE` only after listing the containers, using an exact name, full ID, or unique ID prefix. Keep `MOARK_BASE_URL=https://api.moark.com/v1` unless the platform explicitly supplies another endpoint.
+
+Treat `mc ls` as the non-mutating configuration check. On HTTP 401 or 403, ask the operator to verify the workspace, token validity, and compute-container permissions without revealing the token.
 
 ## Discover before acting
 
