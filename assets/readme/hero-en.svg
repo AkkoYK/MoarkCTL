@@ -61,6 +61,6 @@
     <text x="64" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">NO SSH</text>
     <text x="184" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">NO DELETE</text>
     <text x="335" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">WAIT EVERY TARGET</text>
-    <text x="1030" y="396" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">mc / 0.3.0</text>
+    <text x="1030" y="396" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">mc / 0.6.0</text>
   </g>
 </svg>

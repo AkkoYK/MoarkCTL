@@ -1,6 +1,6 @@
 ---
 name: moarkctl
-description: Manage every Moark compute container owned by one access token using explicit target discovery, safe multi-instance selection, lifecycle commands, and all-target status waits.
+description: Manage every Moark compute container owned by one access token using explicit discovery, detailed provider status, stable local aliases, accelerator or accelerator-free startup, safe multi-instance lifecycle commands, all-target waits, and structured receipts.
 ---
 
 # MoarkCTL
@@ -14,11 +14,12 @@ Do not read, print, or request the token in chat. If setup is missing:
 1. Run `mc init` to create `~/.config/moarkctl/config.env` with private permissions.
 2. Ask the operator to open [Moark Settings → Access Tokens](https://moark.com/kdakztwn/dashboard/settings/tokens), create an appropriately scoped token, and edit the config locally.
 3. Ask them to place the raw value in `MOARK_TOKEN` without `Bearer`.
-4. Leave `MOARK_DEFAULT_INSTANCE` empty until discovery. No instance ID is required in configuration.
+4. Leave `MOARK_DEFAULT_INSTANCE` empty until discovery. Initial discovery requires no instance ID.
+5. If the API name is empty or unstable, ask the operator to map the full discovered ID locally. `MOARK_INSTANCE_NPU_910B=NHRNUEKVXXGAEI1U` creates the selector `npu-910b`. Never guess or abbreviate the mapped ID.
 
 Use `--env-file PATH` or `MOARKCTL_CONFIG=PATH` only when the user-level path is unsuitable. Never rely on the current working directory for configuration. Every non-init command reports its config path on stderr.
 
-Reject placeholder tokens such as `replace-me` or `your-token`. On HTTP 401 or 403, ask the operator to verify token validity, workspace, and compute-container permissions without revealing the token.
+Reject placeholder tokens such as `replace-me` or `your-token`. Treat `auth_error` as a request to verify token validity, workspace, and compute-container permissions without revealing the token. Use `dns_error`, `connect_timeout`, `tls_error`, and `api_error` plus `api_host` and `suggested_action` to choose the next diagnostic step.
 
 ## Discover before acting
 
@@ -29,19 +30,28 @@ mc self-test
 mc ls
 ```
 
-`self-test` performs API discovery only. It must not start, stop, or reboot a container. Select targets by exact name, full ID, or unique ID prefix. With several containers, never assume the first list item is intended.
+`self-test` performs API discovery only. It must not start, stop, or reboot a container. Select targets by a configured local alias, exact name, full ID, or unique ID prefix. Read `local_aliases` and `alias_errors` from JSON discovery. With several containers, never assume the first list item is intended.
+
+Read `platform_status`, `status_detail`, and `accelerator_health` separately. Preserve `zone`, `disk_usage`, `lifecycle_timestamps`, and API-provided maintenance, alert, and health values from `health_fields`. If `accelerator_health` or `accelerator_attachment` is `unknown`, do not infer it from `running` or the configured accelerator specification.
 
 ## Change lifecycle with explicit scope
 
 ```bash
 mc on TARGET -w
+mc on TARGET -c -w
 mc off TARGET -w
 mc re TARGET -w
 ```
 
+Use plain `on` for the default accelerator startup. Use `-c` / `--no-accelerator` only when the task explicitly needs CPU, disk, or network access without accelerator resources; it sends the official `with_gpu=false` parameter. If the instance is already running, expect `request_sent=false` and do not claim its accelerator mode changed. Switching modes requires an authorized shutdown followed by a new start.
+
 Pass several selectors for a bounded set. Use `--all` only when the user explicitly intends every token-owned container. Use `-w` so every selected target reaches the requested state; use `-t SECONDS` when provisioning needs a longer wait.
 
-Set `MOARK_DEFAULT_INSTANCE` only after discovery, and only when an exact name, full ID, or unique ID prefix is stable enough to omit the selector safely.
+For Harness parsing, add `--json`. Require `schema_version`, `command`, `target`, `started_at`, `elapsed_seconds`, `success`, `error`, and `data`. On failure, use `error.code`, `error.phase`, `error.retryable`, and `error.suggested_action`; never retry solely because a process exited nonzero. Parse the `receipts` array and match every intended target to `resolved_instance_id`. Record `local_alias`, `before`, `after`, `desired`, `request_sent`, `request_accepted`, `request_error`, `waited`, `wait_completed`, and `settled`. For start, also record `start_mode` and `with_accelerator_requested`. Treat `lifecycle_request_rejected` as a failed operation and inspect `request_failures`; do not wait indefinitely for a rejected request. For shutdown cost control, require every receipt to have `request_accepted!=false`, `wait_completed=true`, `after=stopped`, and `settled=true`.
+
+After `on` or `re`, read `next_step` from the receipt. A configured local alias produces an exact handoff such as `jc -i npu-910b doctor --json`; run it once Jupyter is ready because the token may have rotated. This is a handoff to JupyterCTL, not permission for MoarkCTL to access Shell or files.
+
+Set `MOARK_DEFAULT_INSTANCE` only after discovery, and only when a local alias, exact name, full ID, or unique ID prefix is stable enough to omit the selector safely.
 
 ## Follow the research-compute boundary
 

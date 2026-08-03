@@ -67,13 +67,21 @@ MOARK_BASE_URL=https://api.moark.com/v1
 | Variable | What to enter | Required? |
 | --- | --- | --- |
 | `MOARK_TOKEN` | Raw value from the access-token page, without `Bearer` | Required |
-| `MOARK_DEFAULT_INSTANCE` | After `mc ls`, an exact name, full ID, or unique ID prefix | Optional |
+| `MOARK_DEFAULT_INSTANCE` | After `mc ls`, a local alias, exact name, full ID, or unique ID prefix | Optional |
+| `MOARK_INSTANCE_<LOCAL_NAME>` | Replace `-` with `_` in the local name; set the value to the full ID from `mc ls` | Optional; recommended when the platform name is empty |
 | `MOARK_BASE_URL` | Keep `https://api.moark.com/v1` | Optional; normally unchanged |
 | `MOARK_HTTP_TIMEOUT` | Timeout for one API request, in seconds | Optional; defaults to `60` |
 | `MOARK_POLL_INTERVAL` | Poll interval used by `-w`, in seconds | Optional; defaults to `8` |
 | `MOARK_POLL_TIMEOUT` | Total lifecycle wait timeout, in seconds | Optional; defaults to `600` |
 
-No instance ID is required in configuration. `mc ls` discovers every compute container the token may manage. Placeholder values such as `replace-me` and `your-token` are rejected before any API request.
+Initial discovery requires no instance ID: `mc ls` lists every compute container the token may manage. If the platform `name` is empty or unstable, add a local mapping after discovery:
+
+```bash
+MOARK_INSTANCE_NPU_910B=NHRNUEKVXXGAEI1U
+MOARK_DEFAULT_INSTANCE=npu-910b
+```
+
+The environment suffix is lowercased and `_` becomes `-`, so the example is selected as `npu-910b`. `mc ls` reports resolved mappings under `local_aliases`; an alias that is missing or ambiguous is reported and cannot drive a lifecycle action. Placeholder values such as `replace-me` and `your-token` are rejected before any API request.
 
 ### 4. Run the read-only acceptance check
 
@@ -82,30 +90,36 @@ mc self-test
 mc ls
 ```
 
-`self-test` checks configuration, token authentication, and Moark API discovery. It never starts, stops, or reboots a container. Its output includes `config_file`, instance count, and sanitized instance summaries.
+`self-test` checks configuration, token authentication, and Moark API discovery. It never starts, stops, or reboots a container. Its output includes `config_file`, instance count, and sanitized instance summaries. `platform_status` is the provider lifecycle state, while `status_detail` classifies it as active, transitioning, inactive, or failed. `accelerator_health` is populated only when the API exposes a device-health field; otherwise it is explicitly `unknown`, never inferred from `running`.
 
 ### 5. Start and stop compute
 
 ```bash
-# Start by name and wait for running.
-mc on ascend-lab -w
+# Start by local alias and wait for running.
+mc on npu-910b -w
+
+# Start without accelerator resources for CPU, disk, or network work.
+mc on npu-910b -c -w
+# -c means --no-accelerator; --no-gpu and --cpu-only are also accepted.
 
 # Stop after results are persisted and wait for stopped.
-mc off ascend-lab -w
+mc off npu-910b -w
 ```
+
+Plain `mc on` preserves the existing behavior and sends `with_gpu=true`. Only explicit `-c` sends `with_gpu=false`, matching the [official Moark OpenAPI](https://moark.com/docs/openapi/v1). If the instance is already `running`, MoarkCTL does not reboot it merely to change modes; the receipt reports `request_sent=false` and `start_mode=not_requested_already_running`. To switch between accelerator and accelerator-free modes, first persist the active work, then stop and restart in the intended mode.
 
 ## Why multi-instance operations are difficult to mis-target
 
 | Guardrail | Behavior |
 | --- | --- |
 | Discover first | `mc ls` reads every token-owned container instead of relying on a hard-coded ID |
-| Select explicitly | Full IDs, unique ID prefixes, and exact platform names identify targets |
+| Select explicitly | Local aliases, full IDs, unique ID prefixes, and exact platform names identify targets |
 | Reject ambiguity | Duplicate names, non-unique prefixes, and missing targets with multiple containers fail closed |
 | Require explicit all | An operation covering every container must include `--all` |
 | Wait for every target | `-w` checks every selected container, not only the first item |
 | Bound the scope | There are no commands to create or destroy instances or delete volumes |
 
-When the token owns one container, omitting the target selects it automatically. With several containers, set `MOARK_DEFAULT_INSTANCE` only after discovery; it may contain an exact name, full ID, or unique ID prefix.
+When the token owns one container, omitting the target selects it automatically. With several containers, set `MOARK_DEFAULT_INSTANCE` only after discovery; it may contain a local alias, exact name, full ID, or unique ID prefix.
 
 ## Short command reference
 
@@ -113,7 +127,7 @@ When the token owns one container, omitting the target selects it automatically.
 | --- | --- | --- |
 | `check` | `self-test` | Read-only configuration and discovery test |
 | `ls` / `st` | `list` / `status` | List all or selected containers |
-| `on` | `start` | Start with the accelerator attached |
+| `on` | `start` | Start with an accelerator by default; add `-c` for accelerator-free startup |
 | `off` | `shutdown` | Stop a compute container |
 | `re` | `reboot` | Reboot a compute container |
 
@@ -132,6 +146,32 @@ mc off --all -w
 
 `-w` is short for `--wait`. Use `-t SECONDS` to override one wait timeout. Use `mc ls --json` for a structured list.
 
+## What instance status includes
+
+Human output from `mc ls` / `mc st` includes the provider status and Chinese label, state category, zone, accelerator specification, device health, system/data disk rates, last update time, and billing type. JSON additionally retains:
+
+- `status_detail`, classifying `pending`, `running`, `restarting`, `stopped`, and `failed`, including transition, terminal, and failure flags;
+- `zone`, `disk_usage.system_disk_rate`, and `disk_usage.data_disk_rate`;
+- `lifecycle_timestamps` for creation, update, expiration, start, and stop, with both provider values and UTC ISO timestamps;
+- `health_fields` for additional maintenance, alert, and health data returned by the provider.
+
+The official instance-list response exposes accelerator specifications but not whether an accelerator is actually attached for the current boot. `accelerator_attachment` therefore remains `unknown`. An accelerator-free receipt proves that this request sent `with_gpu=false`; it does not turn the request into platform telemetry.
+
+Lifecycle commands also accept `--json`:
+
+```bash
+mc on npu-910b -w --json
+mc off npu-910b -w --json
+```
+
+Output always contains a `receipts` array. Every target has `selector`, `resolved_instance_id`, `local_alias`, `before`, `after`, `desired`, `request_sent`, `request_accepted`, `request_error`, `waited`, `wait_completed`, and `settled`. Start receipts also include `start_mode` and `with_accelerator_requested`. Without `-w`, `after` is one post-request observation. Even with `-w`, an explicit per-target rejection exits immediately as `lifecycle_request_rejected` instead of misreporting the target as settled. When shutdown completion is the billing boundary, require every receipt to satisfy `request_accepted!=false`, `wait_completed=true`, `after=stopped`, and `settled=true`. When a local alias is used, start and reboot receipts provide an exact `next_step`, such as `jc -i npu-910b doctor --json`, because instance reconstruction may rotate the Jupyter token.
+
+Every machine-readable response uses the same top-level protocol: `schema_version`, `command`, `target`, `started_at`, `elapsed_seconds`, `success`, `error`, and `data`. Common result fields remain mirrored at the top level so existing scripts can migrate to `data` gradually.
+
+## Network failures have stable categories
+
+MoarkCTL classifies failures as `dns_error`, `connect_timeout`, `tls_error`, `auth_error`, `api_error`, or the general `network_error`. Errors include only the sanitized API hostname and a suggested action, never the token. When a command uses `--json`, failure output retains stable `error.code`, `error.phase`, `error.retryable`, `error.api_host`, and `error.suggested_action` fields so a harness can choose between refreshing credentials, checking connectivity, or retrying later.
+
 ## Responsibility split with JupyterCTL
 
 | Tool | Responsibility | Common short commands |
@@ -139,7 +179,7 @@ mc off --all -w
 | [MoarkCTL](https://github.com/AkkoYK/MoarkCTL) | Platform lifecycle and the billing boundary | `mc on`, `mc off`, `mc re` |
 | [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) | Commands, terminals, and files inside the machine | `jc x`, `jc u`, `jc d` |
 
-A `running` platform state does not prove that drivers, accelerators, storage, caches, or the research environment are ready. Check the real machine with JupyterCTL after startup. Before shutdown, confirm that background jobs have ended and that logs, checkpoints, and results are persisted.
+A `running` `platform_status` does not prove that drivers, accelerators, storage, caches, or the research environment are ready. `mc ls --json` preserves API-provided maintenance, alert, and health data under `health_fields`; when no device-health data exists, `accelerator_health` remains `unknown`. Check the real machine with JupyterCTL after startup. Before shutdown, confirm that background jobs have ended and that logs, checkpoints, and results are persisted.
 
 See [SKILL.md](SKILL.md) for the compact agent workflow.
 

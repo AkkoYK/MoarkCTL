@@ -61,6 +61,6 @@
     <text x="64" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">不接管 SSH</text>
     <text x="206" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">不删除实例</text>
     <text x="356" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">多目标等待</text>
-    <text x="1030" y="396" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">mc / 0.3.0</text>
+    <text x="1030" y="396" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">mc / 0.6.0</text>
   </g>
 </svg>
