@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
   <title id="title">MoarkCTL for Moark compute-container lifecycle control</title>
-  <desc id="desc">The mc command discovers every token-owned compute container, requires an explicit target, and waits for every selected lifecycle operation.</desc>
+  <desc id="desc">The mc command discovers every token-owned compute container, resolves explicit targets, and waits for every selected lifecycle operation.</desc>
 
   <rect width="1200" height="420" rx="28" fill="#070a0f"/>
   <path d="M0 360H1200" stroke="#223044"/>
@@ -10,7 +10,7 @@
     <text x="64" y="68" fill="#7fa8d1" font-size="18" font-weight="700" letter-spacing="1.4">MOARK COMPUTE / LIFECYCLE CONTROL</text>
     <text x="60" y="156" fill="#f4f7fa" font-size="76" font-weight="700" letter-spacing="-3">Moark<tspan fill="#7fa8d1">CTL</tspan></text>
     <text x="64" y="210" fill="#b7c1cd" font-size="25" font-weight="500">Discover every token-owned container</text>
-    <text x="64" y="244" fill="#b7c1cd" font-size="25" font-weight="500">and control explicit targets safely.</text>
+    <text x="64" y="244" fill="#b7c1cd" font-size="25" font-weight="500">and confirm every selected transition.</text>
 
     <rect x="64" y="286" width="548" height="60" rx="12" fill="#0d131d" stroke="#26384d"/>
     <text x="86" y="323" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">&gt;_</text>
@@ -58,9 +58,9 @@
       <path d="M392 29H416" stroke="#7fa8d1" stroke-width="2"/>
     </g>
 
-    <text x="64" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">NO SSH</text>
-    <text x="184" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">NO DELETE</text>
-    <text x="335" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">WAIT EVERY TARGET</text>
+    <text x="64" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">LIFECYCLE API</text>
+    <text x="230" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">EXPLICIT TARGETS</text>
+    <text x="436" y="396" fill="#778393" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">WAIT EVERY TARGET</text>
     <text x="1030" y="396" fill="#7fa8d1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">mc / 0.6.0</text>
   </g>
 </svg>

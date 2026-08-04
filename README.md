@@ -7,15 +7,15 @@
 </p>
 
 <p align="center">
-  <strong>让 Agent 在需要真机时开机，保存好结果后关机。</strong><br>
-  查询、启动、停止与重启模力方舟算力容器；远端 Shell 和文件传输交给 JupyterCTL。
+  <strong>让 Agent 按任务启停模力方舟算力，把开机时间留给真正需要真机的环节。</strong><br>
+  一个访问令牌管理全部算力容器，支持带卡或无卡开机、详细状态与全目标等待。
 </p>
 
 <p align="center"><code>Python 3.10+</code> · <code>mc</code> 短命令 · 多实例选择 · 全目标状态等待</p>
 
-夜间训练、长时间 benchmark 和多台异构机器叠在一起时，最容易漏掉的是实验结束后的那次关机。网页控制台还开着，Agent 已经没有任务，费用却继续走。
+算子验证、模型微调和长时间 benchmark 往往由本地准备与远端执行交替组成。MoarkCTL 让 Agent 自己安排算力窗口：真机任务开始前开机，等待平台进入目标状态，结果保存后关机并确认计费边界。
 
-MoarkCTL 把模力方舟算力容器的发现和生命周期操作收进一组短命令。它不碰实例创建、销毁、SSH 或数据盘，只负责平台控制和计费边界。
+一个访问令牌即可发现名下全部算力容器。`mc` 用本地别名稳定选择机器，支持带卡或无卡开机，返回详细平台状态和逐目标生命周期回执。工具专注于模力方舟的平台控制；机器内部的命令、任务和文件由 [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) 接续处理。
 
 ## 一分钟跑通
 
@@ -108,16 +108,16 @@ mc off npu-910b -w
 
 普通 `mc on` 保持原有行为，向官方接口发送 `with_gpu=true`；只有显式传 `-c` 才发送 `with_gpu=false`，参数语义与[模力方舟官方 OpenAPI](https://moark.com/docs/openapi/v1) 一致。如果实例已经是 `running`，命令不会为了切换模式而重启它，回执会给出 `request_sent=false` 和 `start_mode=not_requested_already_running`。要从有卡切到无卡或反向切换，应先确认任务和结果已经保存，再关机并按目标模式重新开机。
 
-## 多实例为什么不容易点错
+## 多实例操作保持明确
 
 | 保护点 | 行为 |
 | --- | --- |
-| 先发现 | `mc ls` 读取令牌范围内的全部容器，不依赖写死的实例 ID |
+| 先发现 | `mc ls` 读取令牌范围内的全部容器，建立当前实例清单 |
 | 明确选择 | 本地别名、完整 ID、唯一 ID 前缀和平台名称都可作为目标 |
 | 拒绝歧义 | 名称重复、前缀不唯一或多实例未指定目标时直接报错 |
 | 显式全选 | 操作全部容器必须传 `--all` |
-| 全量等待 | `-w` 检查每个目标，不只看列表第一台 |
-| 控制边界 | 没有创建、销毁实例或删除数据盘的命令 |
+| 全量等待 | `-w` 逐一检查每个目标，直到全部完成或明确超时 |
+| 聚焦生命周期 | 实例创建、销毁和数据盘删除仍由平台控制台管理 |
 
 只有一个容器时，不传目标会自动选择它。账户里有多台机器时，可以在完成发现后设置 `MOARK_DEFAULT_INSTANCE`；它接受本地别名、精确名称、完整 ID 或唯一 ID 前缀。
 
@@ -155,7 +155,7 @@ mc off --all -w
 - `lifecycle_timestamps`：创建、更新、到期、启动和停止时间，同时保留平台原值与 UTC ISO 时间；
 - `health_fields`：平台额外返回的维护、告警和健康字段。
 
-官方实例列表只返回加速卡规格，没有返回“本次开机后是否实际挂载加速卡”。因此 `accelerator_attachment` 会诚实保持 `unknown`；无卡启动回执只能证明本次请求发送了 `with_gpu=false`，不能把请求意图冒充成平台遥测。
+官方实例列表提供加速卡规格，当前接口尚未提供“本次开机后是否实际挂载加速卡”的遥测，因此 `accelerator_attachment` 保持 `unknown`。无卡启动回执会准确记录本次请求发送了 `with_gpu=false`，实际挂载状态以平台后续提供的遥测为准。
 
 生命周期命令也支持 `--json`：
 
@@ -168,7 +168,7 @@ mc off npu-910b -w --json
 
 所有机器可读 JSON 使用同一套顶层协议：`schema_version`、`command`、`target`、`started_at`、`elapsed_seconds`、`success`、`error` 和 `data`。常用结果字段仍镜像在顶层，已有脚本可以逐步迁移到 `data`。
 
-## 网络错误不再混成一句话
+## 可判定的网络错误
 
 MoarkCTL 会把失败分为 `dns_error`、`connect_timeout`、`tls_error`、`auth_error`、`api_error` 或通用 `network_error`。错误只显示脱敏后的 API 主机名和建议动作，不会输出令牌。带 `--json` 的命令发生错误时，会稳定返回 `error.code`、`error.phase`、`error.retryable`、`error.api_host` 与 `error.suggested_action`，便于 Harness 决定是刷新令牌、检查网络还是稍后重试。
 
@@ -179,7 +179,7 @@ MoarkCTL 会把失败分为 `dns_error`、`connect_timeout`、`tls_error`、`aut
 | [MoarkCTL](https://github.com/AkkoYK/MoarkCTL) | 平台生命周期与计费边界 | `mc on`、`mc off`、`mc re` |
 | [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) | 机器内部的远端命令、终端与文件 | `jc x`、`jc u`、`jc d` |
 
-`running` 只是 `platform_status`，不代表驱动、加速卡、磁盘、缓存和实验环境已经就绪。`mc ls --json` 会保留 API 已提供的维护、告警与健康字段在 `health_fields` 中；API 没有设备健康信息时，`accelerator_health` 保持 `unknown`。开机后用 JupyterCTL 检查真机；关机前确认后台进程已经结束，日志、checkpoint 和结果文件也已保存。
+`platform_status=running` 表示容器已经进入平台运行态。`mc ls --json` 会把 API 提供的维护、告警与健康字段完整保存在 `health_fields` 中；当前接口缺少设备健康信息时，`accelerator_health` 保持 `unknown`。随后用 JupyterCTL 检查驱动、加速卡、磁盘、缓存和实验环境。关机前确认后台进程已经结束，日志、checkpoint 和结果文件也已保存。
 
 给 Agent 的紧凑开关机流程见 [SKILL.md](SKILL.md)。
 

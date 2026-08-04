@@ -1,11 +1,11 @@
 ---
 name: moarkctl
-description: Manage every Moark compute container owned by one access token using explicit discovery, detailed provider status, stable local aliases, accelerator or accelerator-free startup, safe multi-instance lifecycle commands, all-target waits, and structured receipts.
+description: Schedule every Moark compute container owned by one access token through explicit discovery, stable local aliases, accelerator or accelerator-free startup, detailed provider status, all-target waits, and structured lifecycle receipts.
 ---
 
 # MoarkCTL
 
-Use `mc`, the short alias for `moarkctl`. Limit this skill to Moark compute-container discovery, start, shutdown, reboot, and status waits. Use [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) for commands, terminals, and files inside a running machine.
+Use `mc`, the short alias for `moarkctl`, to manage the Moark compute window: discover containers, start or reboot them, wait for platform state, and confirm shutdown. Hand the running machine to [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) for commands, terminals, jobs, and files.
 
 ## Configure safely
 
@@ -53,7 +53,7 @@ After `on` or `re`, read `next_step` from the receipt. A configured local alias 
 
 Set `MOARK_DEFAULT_INSTANCE` only after discovery, and only when a local alias, exact name, full ID, or unique ID prefix is stable enough to omit the selector safely.
 
-## Follow the research-compute boundary
+## Run a complete research-compute session
 
 1. Run `mc ls` and record the intended IDs and current states without exposing credentials.
 2. Run `mc on TARGET -w` only when remote compute is needed.
@@ -61,4 +61,4 @@ Set `MOARK_DEFAULT_INSTANCE` only after discovery, and only when a local alias, 
 4. Run the bounded remote task and verify persisted outputs and acceptance evidence.
 5. Check that background work has ended. Then run `mc off TARGET -w` and verify `stopped`.
 
-Do not stop a container because an interactive terminal disappeared. Do not treat a successful shutdown as evidence that an experiment completed or passed. MoarkCTL has no SSH, remote execution, file transfer, instance creation, instance deletion, or volume deletion commands.
+Keep workload acceptance tied to persisted artifacts and task-specific evidence. A vanished interactive terminal is not a shutdown signal, and a successful shutdown receipt records lifecycle completion rather than experiment success. MoarkCTL exposes discovery, status, start, shutdown, reboot, and waits; JupyterCTL handles remote execution and files, while the platform console retains instance and volume administration.

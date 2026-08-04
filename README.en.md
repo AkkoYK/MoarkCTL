@@ -7,15 +7,15 @@
 </p>
 
 <p align="center">
-  <strong>Let agents start real compute when they need it, then shut it down after the results are safe.</strong><br>
-  List, start, stop, and reboot Moark compute containers; leave remote shell and file transfer to JupyterCTL.
+  <strong>Let agents schedule Moark compute around the work that actually needs a real machine.</strong><br>
+  Manage every token-owned container with accelerator or accelerator-free startup, detailed status, and all-target waits.
 </p>
 
 <p align="center"><code>Python 3.10+</code> · <code>mc</code> short commands · Multi-instance targeting · Wait for every target</p>
 
-Overnight training, long benchmarks, and several heterogeneous machines make one expensive mistake easy: forgetting the final shutdown. The browser console stays open, the agent has no work left, and billing continues.
+Operator validation, model fine-tuning, and long benchmarks often alternate between local preparation and remote execution. MoarkCTL gives an agent control of that compute window: start before real-machine work, wait for the requested platform state, then shut down after artifacts are safe and confirm the billing boundary.
 
-MoarkCTL puts Moark discovery and lifecycle control behind a small set of short commands. It does not create or destroy instances, access SSH, or touch data volumes. Its scope is the platform lifecycle and billing boundary.
+One access token discovers every container in scope. `mc` adds stable local aliases, accelerator or accelerator-free startup, detailed provider status, and per-target lifecycle receipts. It owns the Moark platform lifecycle; [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) continues with commands, jobs, and files inside the machine.
 
 ## Get running in one minute
 
@@ -108,16 +108,16 @@ mc off npu-910b -w
 
 Plain `mc on` preserves the existing behavior and sends `with_gpu=true`. Only explicit `-c` sends `with_gpu=false`, matching the [official Moark OpenAPI](https://moark.com/docs/openapi/v1). If the instance is already `running`, MoarkCTL does not reboot it merely to change modes; the receipt reports `request_sent=false` and `start_mode=not_requested_already_running`. To switch between accelerator and accelerator-free modes, first persist the active work, then stop and restart in the intended mode.
 
-## Why multi-instance operations are difficult to mis-target
+## Explicit multi-instance operations
 
 | Guardrail | Behavior |
 | --- | --- |
-| Discover first | `mc ls` reads every token-owned container instead of relying on a hard-coded ID |
+| Discover first | `mc ls` builds the current inventory of every token-owned container |
 | Select explicitly | Local aliases, full IDs, unique ID prefixes, and exact platform names identify targets |
 | Reject ambiguity | Duplicate names, non-unique prefixes, and missing targets with multiple containers fail closed |
 | Require explicit all | An operation covering every container must include `--all` |
-| Wait for every target | `-w` checks every selected container, not only the first item |
-| Bound the scope | There are no commands to create or destroy instances or delete volumes |
+| Wait for every target | `-w` follows each selected container until all settle or time out explicitly |
+| Focus on lifecycle | Instance creation, deletion, and volume deletion remain in the provider console |
 
 When the token owns one container, omitting the target selects it automatically. With several containers, set `MOARK_DEFAULT_INSTANCE` only after discovery; it may contain a local alias, exact name, full ID, or unique ID prefix.
 
@@ -155,7 +155,7 @@ Human output from `mc ls` / `mc st` includes the provider status and Chinese lab
 - `lifecycle_timestamps` for creation, update, expiration, start, and stop, with both provider values and UTC ISO timestamps;
 - `health_fields` for additional maintenance, alert, and health data returned by the provider.
 
-The official instance-list response exposes accelerator specifications but not whether an accelerator is actually attached for the current boot. `accelerator_attachment` therefore remains `unknown`. An accelerator-free receipt proves that this request sent `with_gpu=false`; it does not turn the request into platform telemetry.
+The official instance-list response exposes accelerator specifications. The current API does not include attachment telemetry for the active boot, so `accelerator_attachment` remains `unknown`. An accelerator-free receipt records that the request sent `with_gpu=false`; actual attachment can be added when the platform exposes that telemetry.
 
 Lifecycle commands also accept `--json`:
 
@@ -168,7 +168,7 @@ Output always contains a `receipts` array. Every target has `selector`, `resolve
 
 Every machine-readable response uses the same top-level protocol: `schema_version`, `command`, `target`, `started_at`, `elapsed_seconds`, `success`, `error`, and `data`. Common result fields remain mirrored at the top level so existing scripts can migrate to `data` gradually.
 
-## Network failures have stable categories
+## Actionable network error categories
 
 MoarkCTL classifies failures as `dns_error`, `connect_timeout`, `tls_error`, `auth_error`, `api_error`, or the general `network_error`. Errors include only the sanitized API hostname and a suggested action, never the token. When a command uses `--json`, failure output retains stable `error.code`, `error.phase`, `error.retryable`, `error.api_host`, and `error.suggested_action` fields so a harness can choose between refreshing credentials, checking connectivity, or retrying later.
 
@@ -179,7 +179,7 @@ MoarkCTL classifies failures as `dns_error`, `connect_timeout`, `tls_error`, `au
 | [MoarkCTL](https://github.com/AkkoYK/MoarkCTL) | Platform lifecycle and the billing boundary | `mc on`, `mc off`, `mc re` |
 | [JupyterCTL](https://github.com/AkkoYK/JupyterCTL) | Commands, terminals, and files inside the machine | `jc x`, `jc u`, `jc d` |
 
-A `running` `platform_status` does not prove that drivers, accelerators, storage, caches, or the research environment are ready. `mc ls --json` preserves API-provided maintenance, alert, and health data under `health_fields`; when no device-health data exists, `accelerator_health` remains `unknown`. Check the real machine with JupyterCTL after startup. Before shutdown, confirm that background jobs have ended and that logs, checkpoints, and results are persisted.
+`platform_status=running` marks the provider's running state. `mc ls --json` preserves maintenance, alert, and health data under `health_fields`; when the current API has no device-health value, `accelerator_health` remains `unknown`. Continue with JupyterCTL to inspect drivers, accelerators, storage, caches, and the research environment. Before shutdown, confirm that background jobs have ended and that logs, checkpoints, and results are persisted.
 
 See [SKILL.md](SKILL.md) for the compact agent workflow.
 
